@@ -155,7 +155,7 @@ export function leafCertificateFor(
 }
 
 /** Where OpenSSL keeps the system roots on this machine, if it says. */
-function systemRootsPath(): string | null {
+export function systemRootsPath(): string | null {
   try {
     const output = execFileSync('openssl', ['version', '-d'], { encoding: 'utf8' });
     const directory = output.match(/"([^"]+)"/)?.[1];
@@ -177,11 +177,17 @@ function systemRootsPath(): string | null {
  * unrelated-looking "unable to get local issuer certificate". Recording must
  * not narrow what the app is able to reach.
  */
-export function ensureTrustBundle(authority: CertificateAuthority): string {
+export function ensureTrustBundle(
+  authority: CertificateAuthority,
+  roots: string | null = systemRootsPath()
+): string | null {
+  // No system roots means no bundle. Windows OpenSSL ships none — its trust
+  // lives in the Windows certificate store — and a bundle holding only the
+  // recording CA is precisely the narrowed trust store this function exists
+  // to avoid. Better to skip intercepting those clients than to break them.
+  if (!roots) return null;
   const bundlePath = join(certificateDirectory(), 'bundle.crt');
-  const roots = systemRootsPath();
-  const systemPem = roots ? readFileSync(roots, 'utf8') : '';
-  writeFileSync(bundlePath, `${systemPem}\n${authority.certificatePem}`);
+  writeFileSync(bundlePath, `${readFileSync(roots, 'utf8')}\n${authority.certificatePem}`);
   return bundlePath;
 }
 
@@ -195,14 +201,30 @@ export function ensureTrustBundle(authority: CertificateAuthority): string {
  */
 export function trustEnvironment(
   authority: CertificateAuthority,
-  base: NodeJS.ProcessEnv
+  base: NodeJS.ProcessEnv,
+  roots: string | null = systemRootsPath()
 ): NodeJS.ProcessEnv {
-  const bundle = ensureTrustBundle(authority);
+  const bundle = ensureTrustBundle(authority, roots);
+  // NODE_EXTRA_CA_CERTS is additive and always safe. The other three replace
+  // the trust store, so they are only set when the bundle also carries the
+  // system roots; otherwise the app keeps its own trust and those clients'
+  // HTTPS is relayed rather than read — which the summary reports.
   return {
     ...base,
     NODE_EXTRA_CA_CERTS: authority.certificatePath,
-    REQUESTS_CA_BUNDLE: bundle,
-    SSL_CERT_FILE: bundle,
-    CURL_CA_BUNDLE: bundle,
+    ...(bundle
+      ? { REQUESTS_CA_BUNDLE: bundle, SSL_CERT_FILE: bundle, CURL_CA_BUNDLE: bundle }
+      : {}),
   };
+}
+
+/**
+ * Which clients the recording CA can be trusted by on this machine.
+ *
+ * 'all' when a system root bundle exists to extend; 'node-only' when it does
+ * not, in which case OpenSSL-based clients (Python, curl, Go) keep their own
+ * trust store and their HTTPS is relayed unread.
+ */
+export function trustScope(roots: string | null = systemRootsPath()): 'all' | 'node-only' {
+  return roots ? 'all' : 'node-only';
 }

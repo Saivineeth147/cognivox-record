@@ -9,7 +9,7 @@
 import { readFileSync } from 'fs';
 import {
   isSafeHostname, isOpensslAvailable, ensureCertificateAuthority,
-  ensureTrustBundle, trustEnvironment, leafCertificateFor,
+  ensureTrustBundle, trustEnvironment, leafCertificateFor, systemRootsPath, trustScope,
 } from '../record/tls/certificateAuthority';
 import { toOptions } from '../record/nodeProxyShim';
 
@@ -50,22 +50,43 @@ describe('the node shim request options', () => {
 const describeWithOpenssl = isOpensslAvailable() ? describe : describe.skip;
 
 describeWithOpenssl('the trust bundle', () => {
-  it('should contain the system roots as well as the recording CA', () => {
-    // Pointing SSL_CERT_FILE at the recording CA alone *replaces* the trust
-    // store, leaving the app able to verify exactly one authority — every
-    // ordinary HTTPS call then fails with "unable to get local issuer".
+  // Pointing SSL_CERT_FILE at the recording CA alone *replaces* the trust
+  // store, leaving the app able to verify exactly one authority — every
+  // ordinary HTTPS call then fails with "unable to get local issuer". The
+  // invariant on every OS is therefore: never narrow trust.
+  const hasSystemRoots = systemRootsPath() !== null;
+  const itWithRoots = hasSystemRoots ? it : it.skip;
+
+  itWithRoots('should contain the system roots as well as the recording CA', () => {
     const authority = ensureCertificateAuthority();
-    const bundle = readFileSync(ensureTrustBundle(authority), 'utf8');
+    const bundle = readFileSync(ensureTrustBundle(authority) as string, 'utf8');
     const certificateCount = (bundle.match(/BEGIN CERTIFICATE/g) || []).length;
     expect(bundle).toContain(authority.certificatePem.trim());
     expect(certificateCount).toBeGreaterThan(1);
   });
 
-  it('should point the replacing variables at the bundle, not the bare CA', () => {
+  itWithRoots('should point the replacing variables at the bundle, not the bare CA', () => {
     const authority = ensureCertificateAuthority();
     const env = trustEnvironment(authority, {});
     expect(env.SSL_CERT_FILE).not.toBe(authority.certificatePath);
     expect(env.REQUESTS_CA_BUNDLE).toBe(env.SSL_CERT_FILE);
+  });
+
+  it('should not set the replacing variables at all when there are no system roots', () => {
+    // Windows OpenSSL ships no cert.pem — its trust is in the Windows store.
+    // A bundle of just our CA there would narrow every OpenSSL-based client
+    // to one authority. Skipping interception beats breaking the app.
+    const authority = ensureCertificateAuthority();
+    const env = trustEnvironment(authority, { PATH: '/bin' }, null);
+    expect(env.SSL_CERT_FILE).toBeUndefined();
+    expect(env.REQUESTS_CA_BUNDLE).toBeUndefined();
+    expect(env.CURL_CA_BUNDLE).toBeUndefined();
+    expect(env.NODE_EXTRA_CA_CERTS).toBe(authority.certificatePath);
+  });
+
+  it('should report the trust scope so the summary can explain a TLS zero', () => {
+    expect(trustScope(null)).toBe('node-only');
+    expect(trustScope('/some/cert.pem')).toBe('all');
   });
 
   it('should give Node the bare CA, whose variable is additive', () => {

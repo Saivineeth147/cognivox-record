@@ -23,7 +23,7 @@ import { PostgresRecorder } from './protocols/postgresRecorder';
 import { MongoRecorder } from './protocols/mongoRecorder';
 import type { DependencyInteraction, ProtocolRecorder } from './tcp/protocol';
 import {
-  ensureCertificateAuthority, isOpensslAvailable, trustEnvironment,
+  ensureCertificateAuthority, isOpensslAvailable, trustEnvironment, trustScope,
   type CertificateAuthority,
 } from './tls/certificateAuthority';
 import { createHttpsInterceptor } from './tls/httpsInterceptor';
@@ -74,6 +74,8 @@ export interface RecordSummary {
   readonly dependencyPath: string | null;
   /** True when TLS could be read; false when openssl was unavailable. */
   readonly tlsIntercepted: boolean;
+  /** 'node-only' when no system roots exist to extend, so only Node trusts the CA. */
+  readonly tlsTrustScope: 'all' | 'node-only';
   /** Hosts that refused the recording certificate, and why. */
   readonly interceptFailures: ReadonlyMap<string, string>;
 }
@@ -339,6 +341,7 @@ export async function runRecordSession(
     dependencies: plan.dependencies,
     dependencyPath,
     tlsIntercepted: authority !== null,
+    tlsTrustScope: trustScope(),
     interceptFailures,
   };
 }

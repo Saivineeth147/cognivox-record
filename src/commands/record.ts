@@ -83,6 +83,14 @@ function summaryBody(summary: RecordSummary): string {
     );
   }
 
+  if (summary.tlsIntercepted && summary.tlsTrustScope === 'node-only') {
+    lines.push(
+      '',
+      `${icon.warn} No system root bundle on this machine, so only Node processes trust the recording CA.`,
+      palette.dim('   HTTPS from Python, curl or Go was relayed but not read — their trust store was left intact rather than narrowed.')
+    );
+  }
+
   if (summary.interceptFailures.size > 0) {
     lines.push(
       '',
