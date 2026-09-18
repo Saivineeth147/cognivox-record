@@ -1,0 +1,35 @@
+{
+  "name": "@cognivox/record",
+  "version": "0.1.0",
+  "description": "Turn a running app into a test suite by using it, then run it again with no database. Records HTTP, HTTPS, Postgres, Redis and MongoDB at the wire level — no eBPF, no root, any OS.",
+  "license": "MIT",
+  "author": "Cognivox",
+  "repository": { "type": "git", "url": "https://github.com/Saivineeth147/cognivox-record.git" },
+  "homepage": "https://github.com/Saivineeth147/cognivox-record#readme",
+  "bugs": { "url": "https://github.com/Saivineeth147/cognivox-record/issues" },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": { "cvx-record": "./dist/bin.js" },
+  "files": ["dist", "README.md", "LICENSE"],
+  "engines": { "node": ">=18" },
+  "publishConfig": { "access": "public" },
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": ["record", "replay", "api-testing", "mock", "postgres", "redis", "mongodb", "traffic-capture", "keploy-alternative"],
+  "dependencies": {
+    "boxen": "^5.1.2",
+    "chalk": "^4.1.2",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.13.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.3"
+  }
+}
